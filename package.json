@@ -1,0 +1,13 @@
+{
+  "name": "mue",
+  "version": "0.1.0",
+  "description": "Turn a picture into sound by painting it into the audio's spectrogram.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test \"test/**/*.test.js\"",
+    "icons": "node scripts/make-icons.mjs"
+  }
+}
