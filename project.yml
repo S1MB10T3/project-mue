@@ -1,0 +1,55 @@
+# XcodeGen spec. Run `xcodegen generate` to produce Mue.xcodeproj (gitignored).
+name: Mue
+
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  MueCore:
+    path: MueCore
+
+targets:
+  Mue:
+    type: application
+    platform: iOS
+    sources:
+      - path: Mue
+    dependencies:
+      - package: MueCore
+    settings:
+      base:
+        PRODUCT_NAME: MUE
+        PRODUCT_BUNDLE_IDENTIFIER: $(MUE_BUNDLE_ID)
+        DEVELOPMENT_TEAM: $(MUE_TEAM_ID)
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_EMIT_LOC_STRINGS: YES
+    info:
+      path: Mue/Info.plist
+      properties:
+        CFBundleDisplayName: MUE
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryUsageDescription: MUE turns your photos into sound.
+        NSCameraUsageDescription: Take a photo to turn it into sound.
+        NSMicrophoneUsageDescription: Listen for pictures hidden in sound.
+    scheme:
+      testTargets: []

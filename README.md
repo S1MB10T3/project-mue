@@ -1,111 +1,64 @@
-# mue — image → sound
+# MUE — image → sound
 
 Turn a picture into sound. Every row of pixels becomes a sine wave at a fixed
 frequency, every column a slice of time, and brightness the loudness. Look at
-the resulting audio in a spectrogram and the picture comes back.
+the audio in a spectrogram and the picture comes back.
 
 Inspired by Benn Jordan's video *"I Saved a PNG Image To A Bird"*.
 
-**Status:** proof-of-concept. It works; the UI is functional but unpolished.
+**Status:** native iOS app, early. Phase 1 (engine + project scaffolding) is
+done; the app itself is next. See [docs/PLAN.md](docs/PLAN.md).
 
-## Try it
+## Building
 
-It's a plain web app with no build step and no dependencies.
+Requirements: a Mac with Xcode 16 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). No other dependencies.
 
 ```sh
 git clone https://github.com/s1mb10t3/project-mue.git
 cd project-mue
-npm start            # = python3 -m http.server 8080
+cp Config/Local.xcconfig.example Config/Local.xcconfig   # then edit it, see below
+xcodegen generate
+open Mue.xcodeproj
 ```
 
-Open <http://localhost:8080>. Pick an image, tap **Render & play**, and watch
-the live spectrogram underneath fill in with your picture.
+### Signing with a free Apple ID
 
-### On an iPhone (13 mini or anything running iOS 15+)
+You can run MUE on your own iPhone without a paid developer account.
 
-Option A — local Wi-Fi:
+1. In Xcode → Settings → Accounts, add your Apple ID. Xcode creates a
+   "Personal Team".
+2. Edit `Config/Local.xcconfig`:
+   - `MUE_BUNDLE_ID` — something unique to you, e.g. `com.yourname.mue`.
+     (`com.example.*` style IDs are usually already registered and will fail.)
+   - `MUE_TEAM_ID` — your 10-character team ID. Easiest way to find it: select
+     the `Mue` target → Signing & Capabilities → pick your Personal Team, then
+     read the ID Xcode filled in, put it in the xcconfig, and re-run
+     `xcodegen generate`.
+3. Plug in the phone, choose it as the run destination, press Run. The first
+   time, the phone will ask you to trust the developer certificate under
+   Settings → General → VPN & Device Management.
 
-1. Run `npm start` on your computer.
-2. Find the computer's LAN address (`ipconfig getifaddr en0` on macOS).
-3. On the phone, open Safari at `http://<that-address>:8080`.
+Free-account limits: the app expires after 7 days (just run it again from
+Xcode), and there is no TestFlight.
 
-Option B — GitHub Pages (no computer needed after the first push):
-
-1. Repo **Settings → Pages → Source: GitHub Actions**.
-2. Push to `main`. The `Deploy to GitHub Pages` workflow publishes the app.
-3. Open the Pages URL in Safari, tap **Share → Add to Home Screen** to install
-   it as an app. It then works offline.
-
-iPhone notes:
-
-- **Choose or take a photo** opens the camera / photo library picker.
-- **Save WAV** opens the share sheet, so you can AirDrop the file or save it to
-  Files.
-- If you hear nothing, flip the ring/silent switch: Safari's Web Audio obeys
-  it.
-- To really test the concept, play it out loud and point a second device
-  running any spectrogram app at the speaker.
-
-## How it works
-
-```
-image ──▶ resample to cols × rows ──▶ brightness matrix ──▶ one sine per row,
-                                                            gain = row brightness over time
-                                                        ──▶ OfflineAudioContext render
-                                                        ──▶ AudioBuffer (play / save WAV)
-```
-
-- `src/mapping.js` — pure functions: row ↔ frequency (linear or log spacing),
-  luminance, gamma/invert/floor, peak normalisation. Unit tested.
-- `src/image.js` — loads a file, downsamples it in halving steps (so big photos
-  don't alias), converts pixels to the amplitude matrix.
-- `src/synth.js` — builds an `OfflineAudioContext` with one `OscillatorNode`
-  + `GainNode` per row; the gain uses `setValueCurveAtTime` with the row's
-  brightness curve, so columns are smoothly interpolated. Oscillator start
-  times are jittered by up to one period to randomise phase (avoids a click
-  at t = 0). Rendering is faster than real time.
-- `src/player.js` — real-time playback through an `AnalyserNode`.
-- `src/spectrogram.js` — paints the analyser output into a canvas with exactly
-  the same cols × rows geometry and frequency mapping as the input, so the
-  picture should land on top of where it came from.
-- `src/wav.js` — 16-bit PCM WAV encoder. Unit tested.
-- `src/app.js` — DOM wiring only.
-
-### Settings
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Duration | 6 s | Length of the sound. Columns = duration × columns/second. |
-| Bands | 128 | Number of image rows = number of oscillators. |
-| Low / high freq | 400–8000 Hz | Bottom and top row frequencies. |
-| Scale | linear | Linear matches most spectrogram apps; log sounds more musical. |
-| Columns per second | 40 | Horizontal resolution in time. |
-| Gamma | 1.6 | > 1 darkens midtones (cleaner, less hiss); < 1 brightens them. |
-| Silence floor | 0.05 | Pixels darker than this are muted. |
-| Invert | off | Dark pixels become loud (for black-on-white drawings). |
-
-The image is stretched to the cols × rows grid; the preview shows exactly what
-gets encoded.
-
-## Development
+### Running the engine tests
 
 ```sh
-npm test        # node's built-in test runner, no deps
-npm run icons   # regenerate icons/*.png from scripts/make-icons.mjs
+cd MueCore && swift test
 ```
 
-ES modules need to be served over HTTP; opening `index.html` directly from
-disk won't work.
+## Project layout
 
-## Roadmap / ideas
+- `MueCore/` — the engine as a Swift package: image → matrix → samples → WAV.
+  Pure Swift, no UI, unit tested.
+- `Mue/` — the SwiftUI app.
+- `project.yml` — XcodeGen spec that generates `Mue.xcodeproj`.
+- `docs/` — [plan](docs/PLAN.md) and [architecture](docs/ARCHITECTURE.md).
 
-- [ ] UI polish (this pass is deliberately plain)
-- [ ] Draw / paint directly on the canvas
-- [ ] Stereo (e.g. colour channels → left/right)
-- [ ] Microphone input: decode a picture *from* sound (the other half of the trick)
-- [ ] Share links / presets
+## Contributing
 
-Contributions welcome — open an issue or PR.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

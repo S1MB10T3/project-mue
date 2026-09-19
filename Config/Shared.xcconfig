@@ -1,0 +1,7 @@
+// Shared build settings for every developer.
+// Put your own values in Config/Local.xcconfig (gitignored); it overrides these.
+
+MUE_BUNDLE_ID = com.example.mue
+MUE_TEAM_ID =
+
+#include? "Local.xcconfig"
