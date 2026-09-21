@@ -71,7 +71,7 @@ struct PictureCanvasView: View {
         Button {
             showCamera = true
         } label: {
-            circleIcon("camera")
+            CircleIcon(systemName: "camera")
         }
         .disabled(!CameraPicker.isAvailable)
         .accessibilityLabel("Take a photo")
@@ -79,13 +79,21 @@ struct PictureCanvasView: View {
 
     private var libraryButton: some View {
         PhotosPicker(selection: $pickerItem, matching: .images) {
-            circleIcon("photo.on.rectangle")
+            CircleIcon(systemName: "photo.on.rectangle")
         }
         .accessibilityLabel("Choose a photo")
     }
 
-    private func circleIcon(_ name: String) -> some View {
-        Image(systemName: name)
+}
+
+/// A 48 pt circular glass button face. A standalone view rather than a helper
+/// method so it can be used from label closures that aren't main-actor
+/// isolated, like `PhotosPicker`'s.
+struct CircleIcon: View {
+    let systemName: String
+
+    var body: some View {
+        Image(systemName: systemName)
             .font(.system(size: 18, weight: .medium))
             .foregroundStyle(.primary)
             .frame(width: 48, height: 48)
