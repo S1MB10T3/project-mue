@@ -1,0 +1,8 @@
+// Copy this file to Config/Local.xcconfig and fill in your own values.
+// Local.xcconfig is gitignored so your team ID never ends up in a commit.
+
+// Must be unique to you. com.example.* will not work.
+MUE_BUNDLE_ID = com.yourname.mue
+
+// Your 10-character Apple developer team ID (Personal Team is fine).
+MUE_TEAM_ID = ABCDE12345
