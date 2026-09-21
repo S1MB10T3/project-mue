@@ -56,9 +56,12 @@ final class AppModel {
     /// Takes a shot from the live feed and encodes it, unless something else
     /// (a library pick, a retake) replaced that intent while the shutter was
     /// in flight.
+    ///
+    /// Snapshots the generation rather than starting a new intent: nothing on
+    /// screen should be abandoned until there is actually a new picture.
     func capturePhoto() async {
         guard !isCapturing else { return }
-        let gen = beginIntent()
+        let gen = generation
         isCapturing = true
         let image = await camera.capturePhoto()
         isCapturing = false
@@ -71,13 +74,16 @@ final class AppModel {
     }
 
     /// Loads a library pick and encodes it, unless a newer picture arrived
-    /// while it was loading.
+    /// while it was loading. Same snapshot rule as `capturePhoto`: a pick
+    /// that fails to load leaves whatever is on screen exactly as it was.
     func loadPhoto(from item: PhotosPickerItem) async {
-        let gen = beginIntent()
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data)
-        else { return }
+        let gen = generation
+        let loaded = try? await item.loadTransferable(type: Data.self)
         guard gen == generation else { return }
+        guard let data = loaded, let image = UIImage(data: data) else {
+            errorMessage = "Couldn't load that photo."
+            return
+        }
         await setPhoto(image)
     }
 
@@ -93,10 +99,11 @@ final class AppModel {
         Task { await startCamera() }
     }
 
-    /// Starts a new user intent (capture, pick, retake, encode) and returns
-    /// its generation. Anything still in flight from an earlier intent sees
-    /// the mismatch when it resumes and drops its result, so the spinner is
-    /// cleared here rather than left to work that will never finish.
+    /// Starts a new intent that replaces what is on screen (retake, encode)
+    /// and returns its generation. Anything still in flight from an earlier
+    /// intent sees the mismatch when it resumes and drops its result, so the
+    /// spinner is cleared here rather than left to work that will never
+    /// finish.
     @discardableResult
     private func beginIntent() -> Int {
         generation += 1
