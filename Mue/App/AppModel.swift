@@ -4,6 +4,7 @@ import Foundation
 import MueCore
 import Observation
 import PhotosUI
+import SwiftUI
 import UIKit
 
 /// Single source of truth for the UI. Heavy work (resampling, rendering)
