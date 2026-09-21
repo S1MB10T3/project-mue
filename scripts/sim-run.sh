@@ -9,7 +9,17 @@ cd "$(dirname "$0")/.."
 
 sim_id="$(scripts/sim-id.sh)"
 xcrun simctl boot "$sim_id" 2>/dev/null || true
-open -a Simulator
+
+# Bring up the Simulator window if the GUI app is installed. It normally lives
+# inside Xcode, but some installs (Xcode 27) don't ship it at all — simctl
+# drives the runtime either way, so never fail the run over a missing window.
+sim_app="$(xcode-select -p)/Applications/Simulator.app"
+if [ -d "$sim_app" ]; then
+  open "$sim_app" || true
+elif ! open -b com.apple.iphonesimulator 2>/dev/null; then
+  echo "note: Simulator.app not installed; running headless." >&2
+  echo "      Use scripts/sim-screenshot.sh to see the screen." >&2
+fi
 
 xcodegen generate --quiet
 xcodebuild build \
