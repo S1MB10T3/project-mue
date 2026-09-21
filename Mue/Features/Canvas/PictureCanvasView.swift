@@ -78,7 +78,7 @@ struct PictureCanvasView: View {
         } label: {
             CircleIcon(systemName: model.photo == nil ? "camera" : "arrow.counterclockwise")
         }
-        .disabled(model.cameraAccess != .authorized)
+        .disabled(model.cameraAccess != .authorized || model.isCapturing)
         .accessibilityLabel(model.photo == nil ? "Take a photo" : "Back to the camera")
     }
 

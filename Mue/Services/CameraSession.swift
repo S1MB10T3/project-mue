@@ -29,9 +29,11 @@ final class CameraSession: @unchecked Sendable {
     private let output = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "com.mue.camera-session")
     private var isConfigured = false
-    /// `AVCapturePhotoOutput` does not retain its delegate, so the in-flight
-    /// one is held here for the length of the capture.
-    private var activeDelegate: PhotoCaptureDelegate?
+    /// `AVCapturePhotoOutput` does not retain its delegates, so each in-flight
+    /// capture's delegate is held here, keyed by its settings' `uniqueID`,
+    /// until it has resumed its caller. Several captures can overlap without
+    /// one dropping another's continuation.
+    private var inFlight: [Int64: PhotoCaptureDelegate] = [:]
 
     /// The session the preview layer renders. `AVCaptureVideoPreviewLayer` is
     /// main-actor bound and attaching a session to it from there is supported.
@@ -84,14 +86,17 @@ final class CameraSession: @unchecked Sendable {
         }
     }
 
+    /// Stops the feed. Any capture still waiting on a still gets `nil`: a
+    /// stopped session is not guaranteed to call its photo delegate back.
     func stop() {
         queue.async {
+            for delegate in self.inFlight.values { delegate.finish(nil) }
             if self.session.isRunning { self.session.stopRunning() }
         }
     }
 
-    /// Takes one still from the live feed. `nil` if the session is not running
-    /// or the capture failed.
+    /// Takes one still from the live feed. `nil` if the session is not running,
+    /// is stopped mid-capture, or the capture failed. Always returns.
     func capturePhoto() async -> UIImage? {
         await withCheckedContinuation { continuation in
             queue.async {
@@ -99,15 +104,15 @@ final class CameraSession: @unchecked Sendable {
                     continuation.resume(returning: nil)
                     return
                 }
-                let delegate = PhotoCaptureDelegate { image in
-                    // Called on AVFoundation's own queue: hop back to ours to
-                    // drop the delegate, then hand the photo over. `self` is
-                    // already held strongly by the enclosing `queue.async`.
-                    self.queue.async { self.activeDelegate = nil }
+                let settings = AVCapturePhotoSettings()
+                let id = settings.uniqueID
+                let delegate = PhotoCaptureDelegate(queue: self.queue) { image in
+                    // Runs on `queue`, exactly once per capture (see `finish`).
+                    self.inFlight[id] = nil
                     continuation.resume(returning: image)
                 }
-                self.activeDelegate = delegate
-                self.output.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
+                self.inFlight[id] = delegate
+                self.output.capturePhoto(with: settings, delegate: delegate)
             }
         }
     }
@@ -138,6 +143,15 @@ final class CameraSession: @unchecked Sendable {
         }
         session.addOutput(output)
 
+        // The app is portrait-only, so pin stills to portrait (90° for the
+        // back camera, the same rotation the preview layer applies) instead of
+        // trusting the connection's default. Otherwise a still can come out
+        // sideways relative to what the live feed showed.
+        if let connection = output.connection(with: .video),
+           connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
+
         isConfigured = true
         Self.log.info("configure: ready on \(device.localizedName, privacy: .public)")
         return nil
@@ -148,12 +162,26 @@ final class CameraSession: @unchecked Sendable {
 ///
 /// Deliberately *not* `@MainActor`: AVFoundation calls this back on its own
 /// queue, and a main-actor-isolated delegate method would trap there the same
-/// way the playback tap used to.
+/// way the playback tap used to. `@unchecked Sendable` because `completion`
+/// is only read and cleared on `queue`.
 private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
-    private let completion: @Sendable (UIImage?) -> Void
+    private let queue: DispatchQueue
+    private var completion: (@Sendable (UIImage?) -> Void)?
 
-    init(completion: @escaping @Sendable (UIImage?) -> Void) {
+    init(queue: DispatchQueue, completion: @escaping @Sendable (UIImage?) -> Void) {
+        self.queue = queue
         self.completion = completion
+    }
+
+    /// Resumes the waiting call exactly once, on `queue`. Safe to call from
+    /// AVFoundation's callback and from `CameraSession.stop()` alike; whichever
+    /// comes second is a no-op.
+    func finish(_ image: UIImage?) {
+        queue.async {
+            guard let completion = self.completion else { return }
+            self.completion = nil
+            completion(image)
+        }
     }
 
     func photoOutput(
@@ -165,9 +193,9 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
               let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data)
         else {
-            completion(nil)
+            finish(nil)
             return
         }
-        completion(image)
+        finish(image)
     }
 }

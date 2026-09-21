@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import MueCore
 import Observation
+import PhotosUI
 import UIKit
 
 /// Single source of truth for the UI. Heavy work (resampling, rendering)
@@ -18,6 +19,7 @@ final class AppModel {
     private(set) var audio: RenderedAudio?
     private(set) var envelope: [Float] = []
     private(set) var isPreparing = false
+    private(set) var isCapturing = false
     private(set) var isPlaying = false
     /// Playback position, 0…1.
     private(set) var progress: Double = 0
@@ -50,12 +52,31 @@ final class AppModel {
         camera.stop()
     }
 
-    /// Takes a shot from the live feed and encodes it.
+    /// Takes a shot from the live feed and encodes it, unless something else
+    /// (a library pick, a retake) replaced that intent while the shutter was
+    /// in flight.
     func capturePhoto() async {
-        guard let image = await camera.capturePhoto() else {
+        guard !isCapturing else { return }
+        let gen = beginIntent()
+        isCapturing = true
+        let image = await camera.capturePhoto()
+        isCapturing = false
+        guard gen == generation else { return }
+        guard let image else {
             errorMessage = "Couldn't take that photo."
             return
         }
+        await setPhoto(image)
+    }
+
+    /// Loads a library pick and encodes it, unless a newer picture arrived
+    /// while it was loading.
+    func loadPhoto(from item: PhotosPickerItem) async {
+        let gen = beginIntent()
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data)
+        else { return }
+        guard gen == generation else { return }
         await setPhoto(image)
     }
 
@@ -66,9 +87,20 @@ final class AppModel {
         audio = nil
         envelope = []
         errorMessage = nil
-        generation += 1
+        beginIntent()
         guard cameraAccess == .authorized else { return }
         Task { await startCamera() }
+    }
+
+    /// Starts a new user intent (capture, pick, retake, encode) and returns
+    /// its generation. Anything still in flight from an earlier intent sees
+    /// the mismatch when it resumes and drops its result, so the spinner is
+    /// cleared here rather than left to work that will never finish.
+    @discardableResult
+    private func beginIntent() -> Int {
+        generation += 1
+        isPreparing = false
+        return generation
     }
 
     /// Encode a new photo and render its audio.
@@ -80,10 +112,7 @@ final class AppModel {
         audio = nil
         envelope = []
         errorMessage = nil
-        generation += 1
-        let gen = generation
-        // Owned by this call from here on: an older in-flight render that
-        // bails on the generation check must not touch it.
+        let gen = beginIntent()
         isPreparing = true
 
         guard let prepared = ImageLoader.prepare(image) else {

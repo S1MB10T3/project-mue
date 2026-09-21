@@ -39,16 +39,11 @@ struct ContentView: View {
         }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
-            Task { await load(item) }
+            Task {
+                await model.loadPhoto(from: item)
+                pickerItem = nil
+            }
         }
-    }
-
-    private func load(_ item: PhotosPickerItem) async {
-        defer { pickerItem = nil }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data)
-        else { return }
-        await model.setPhoto(image)
     }
 }
 
