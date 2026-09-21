@@ -38,7 +38,12 @@ final class AppModel {
     /// canvas's resting state.
     func startCamera() async {
         cameraAccess = await CameraSession.requestAccess()
-        if cameraAccess == .authorized, photo == nil { camera.start() }
+        guard cameraAccess == .authorized, photo == nil else { return }
+        if let failure = await camera.start() {
+            errorMessage = "Couldn't start the camera (\(failure.rawValue))."
+        } else {
+            errorMessage = nil
+        }
     }
 
     func stopCamera() {
@@ -62,7 +67,8 @@ final class AppModel {
         envelope = []
         errorMessage = nil
         generation += 1
-        if cameraAccess == .authorized { camera.start() }
+        guard cameraAccess == .authorized else { return }
+        Task { await startCamera() }
     }
 
     /// Encode a new photo and render its audio.

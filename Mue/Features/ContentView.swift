@@ -27,10 +27,14 @@ struct ContentView: View {
             await model.startCamera()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await model.startCamera() }
-            } else {
-                model.stopCamera()
+            // Only `.background` releases the camera. `.inactive` fires for
+            // transient things — a notification banner, the app switcher, the
+            // permission alert itself — and tearing the session down for those
+            // is churn that can leave the feed stopped.
+            switch phase {
+            case .active: Task { await model.startCamera() }
+            case .background: model.stopCamera()
+            default: break
             }
         }
         .onChange(of: pickerItem) { _, item in

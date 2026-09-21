@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import UIKit
 
 /// Owns the `AVCaptureSession` behind the canvas's live preview and takes
@@ -14,6 +15,15 @@ final class CameraSession: @unchecked Sendable {
         case authorized
         case denied
     }
+
+    /// Why the live feed isn't running. `nil` once frames are flowing.
+    enum StartFailure: String {
+        case notAuthorized
+        case noCameraDevice
+        case cannotConfigureSession
+    }
+
+    private static let log = Logger(subsystem: "com.mue", category: "camera")
 
     private let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
@@ -46,15 +56,31 @@ final class CameraSession: @unchecked Sendable {
     }
 
     /// Configures inputs on first use and starts delivering frames. Safe to
-    /// call repeatedly.
-    func start() {
-        queue.async {
-            guard Self.access == .authorized else { return }
-            if !self.isConfigured {
-                self.configure()
-                guard self.isConfigured else { return }
+    /// call repeatedly. Returns the reason it could not start, or `nil` on
+    /// success — a silent failure here is invisible on screen, so the caller
+    /// gets something it can show.
+    @discardableResult
+    func start() async -> StartFailure? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                guard Self.access == .authorized else {
+                    Self.log.error("start: not authorized")
+                    continuation.resume(returning: .notAuthorized)
+                    return
+                }
+                if !self.isConfigured {
+                    if let failure = self.configure() {
+                        Self.log.error("start: configure failed (\(failure.rawValue, privacy: .public))")
+                        continuation.resume(returning: failure)
+                        return
+                    }
+                }
+                if !self.session.isRunning {
+                    self.session.startRunning()
+                }
+                Self.log.info("start: running=\(self.session.isRunning, privacy: .public)")
+                continuation.resume(returning: self.session.isRunning ? nil : .cannotConfigureSession)
             }
-            if !self.session.isRunning { self.session.startRunning() }
         }
     }
 
@@ -86,19 +112,35 @@ final class CameraSession: @unchecked Sendable {
         }
     }
 
-    /// Must only be called on `queue`.
-    private func configure() {
+    /// Must only be called on `queue`. Returns the reason it failed, or `nil`.
+    private func configure() -> StartFailure? {
         session.beginConfiguration()
         defer { session.commitConfiguration() }
         session.sessionPreset = .photo
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input),
-              session.canAddOutput(output)
-        else { return }
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            Self.log.error("configure: no back wide-angle camera")
+            return .noCameraDevice
+        }
+        guard let input = try? AVCaptureDeviceInput(device: device) else {
+            Self.log.error("configure: could not open \(device.localizedName, privacy: .public)")
+            return .noCameraDevice
+        }
+        guard session.canAddInput(input) else {
+            Self.log.error("configure: session refused the input")
+            return .cannotConfigureSession
+        }
         session.addInput(input)
+
+        guard session.canAddOutput(output) else {
+            Self.log.error("configure: session refused the photo output")
+            return .cannotConfigureSession
+        }
         session.addOutput(output)
+
         isConfigured = true
+        Self.log.info("configure: ready on \(device.localizedName, privacy: .public)")
+        return nil
     }
 }
 
