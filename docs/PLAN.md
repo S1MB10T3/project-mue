@@ -61,26 +61,28 @@ Goal: the repository builds, tests pass, and the architecture exists in code.
 
 Done when: CI is green and the skeleton launches on the device.
 
-### Phase 2 — Concept parity
+### Phase 2 — The core loop, to the Figma layout
 
-Goal: everything the web prototype did, natively.
+Goal: pick or take a photo → hear it → watch it come back. Nail the feel
+before adding anything around it.
 
-- [ ] Pick an image from the photo library (PhotosPicker).
-- [ ] Downsample to columns × rows and show the encoded preview.
-- [ ] Render audio with `AdditiveSynthesizer` off the main thread.
-- [ ] Play through `AVAudioEngine` with `.playback` session category (plays
-      through the silent switch) and a playhead over the preview.
-- [ ] Live spectrogram of the playback with the same geometry as the preview.
-- [ ] Settings sheet: duration, bands, frequency range, scale, columns per
-      second, gamma, floor, invert. Persisted with `@AppStorage`.
-- [ ] Share as WAV via `ShareLink`.
+- [x] Pick an image from the photo library (PhotosPicker) or the camera.
+- [x] Downsample to columns × rows, encode, render audio off the main thread.
+- [x] Play through `AVAudioEngine` with `.playback` session category (plays
+      through the silent switch), playhead over the photo.
+- [x] Live spectrogram painted over the photo, left to right, with the same
+      geometry as the encoded matrix.
+- [x] Player pill: real loudness envelope as bars, filling in as it plays.
+- [ ] Tune the feel on the device: default duration / band count / frequency
+      range, spectrogram dynamic range, how the canvas transitions.
+- [ ] Settings sheet (deferred until the core feels right).
+- [ ] Share as WAV via `ShareLink` (deferred).
 
 Done when: a photo played on the 13 mini is recognisable in the in-app
 spectrogram *and* in a third-party spectrogram app on another device.
 
 ### Phase 3 — Native-only features
 
-- [ ] Camera capture.
 - [ ] Draw directly on the canvas (PencilKit) and hear it.
 - [ ] "Fit duration to image" so the picture isn't stretched.
 - [ ] Accelerate (vDSP) synthesis path for 512+ bands.

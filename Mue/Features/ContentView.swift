@@ -1,71 +1,47 @@
+import PhotosUI
 import SwiftUI
-import MueCore
 
-/// Phase 1 skeleton: the screen layout with placeholders, so the project
-/// builds, runs on a device, and the shape of the UI is agreed before the
-/// features land. See docs/PLAN.md.
+/// Main screen: the picture canvas and the player pill, per the Figma layout.
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var showCamera = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Every row of pixels is a sine wave; brightness is loudness.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    placeholder(title: "Image", subtitle: "Photo picker, encoded preview and playhead go here.")
-
-                    HStack(spacing: 8) {
-                        Button("Render & play") {}
-                            .buttonStyle(.borderedProminent)
-                            .frame(maxWidth: .infinity)
-                        Button("Stop") {}
-                            .buttonStyle(.bordered)
-                        Button("Share") {}
-                            .buttonStyle(.bordered)
-                    }
-                    .disabled(true)
-
-                    Text(model.status)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    placeholder(title: "What comes back out", subtitle: "Live spectrogram of playback goes here.")
-
-                    settingsSummary
-                }
-                .padding()
+        VStack(spacing: 24) {
+            PictureCanvasView(pickerItem: $pickerItem, showCamera: $showCamera)
+            PlayerPillView()
+            if let message = model.errorMessage {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
             }
-            .navigationTitle("MUE")
         }
-    }
-
-    private func placeholder(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.headline)
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.quaternary)
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .overlay {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding()
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 24)
+        .background(Color(uiColor: .systemBackground))
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            Task { await load(item) }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                showCamera = false
+                if let image {
+                    Task { await model.setPhoto(image) }
                 }
+            }
+            .ignoresSafeArea()
         }
     }
 
-    private var settingsSummary: some View {
-        let s = model.settings
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("Settings").font(.headline)
-            Text("\(s.columns) × \(s.bands) cells · \(Int(s.minFrequency))–\(Int(s.maxFrequency)) Hz \(s.scale.rawValue) · \(s.duration.formatted()) s")
-                .font(.footnote.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
+    private func load(_ item: PhotosPickerItem) async {
+        defer { pickerItem = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data)
+        else { return }
+        await model.setPhoto(image)
     }
 }
 
