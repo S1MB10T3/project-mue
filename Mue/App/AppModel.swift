@@ -34,7 +34,13 @@ final class AppModel {
 
     private let player = AudioPlayer()
     private let camera = CameraSession()
+    /// Bumped whenever a picture lands or is discarded (`setPhoto`, `retake`).
+    /// Work in flight for an older generation drops its result.
     private var generation = 0
+    /// Bumped whenever the user asks for a picture (capture, library pick,
+    /// retake). A request that finishes after a newer one started is
+    /// discarded, whichever finishes first, so the newest choice always wins.
+    private var latestRequest = 0
 
     /// Asks for camera access if it has not been asked for, and starts the
     /// live feed. Called when the canvas appears, because the feed is the
@@ -53,19 +59,17 @@ final class AppModel {
         camera.stop()
     }
 
-    /// Takes a shot from the live feed and encodes it, unless something else
-    /// (a library pick, a retake) replaced that intent while the shutter was
-    /// in flight.
-    ///
-    /// Snapshots the generation rather than starting a new intent: nothing on
-    /// screen should be abandoned until there is actually a new picture.
+    /// Takes a shot from the live feed and encodes it, unless a newer request
+    /// (a library pick, a retake) superseded it while the shutter was in
+    /// flight. Only a request token is taken here, not a new generation:
+    /// nothing on screen is abandoned until there is actually a new picture.
     func capturePhoto() async {
         guard !isCapturing else { return }
-        let gen = generation
+        let request = beginRequest()
         isCapturing = true
         let image = await camera.capturePhoto()
         isCapturing = false
-        guard gen == generation else { return }
+        guard request == latestRequest else { return }
         guard let image else {
             errorMessage = "Couldn't take that photo."
             return
@@ -73,13 +77,13 @@ final class AppModel {
         await setPhoto(image)
     }
 
-    /// Loads a library pick and encodes it, unless a newer picture arrived
-    /// while it was loading. Same snapshot rule as `capturePhoto`: a pick
-    /// that fails to load leaves whatever is on screen exactly as it was.
+    /// Loads a library pick and encodes it, unless a newer request superseded
+    /// it while it was loading. Same rule as `capturePhoto`: a pick that
+    /// fails to load leaves whatever is on screen exactly as it was.
     func loadPhoto(from item: PhotosPickerItem) async {
-        let gen = generation
+        let request = beginRequest()
         let loaded = try? await item.loadTransferable(type: Data.self)
-        guard gen == generation else { return }
+        guard request == latestRequest else { return }
         guard let data = loaded, let image = UIImage(data: data) else {
             errorMessage = "Couldn't load that photo."
             return
@@ -94,9 +98,18 @@ final class AppModel {
         audio = nil
         envelope = []
         errorMessage = nil
+        beginRequest()
         beginIntent()
         guard cameraAccess == .authorized else { return }
         Task { await startCamera() }
+    }
+
+    /// Registers a new request for a picture and returns its token. See
+    /// `latestRequest`.
+    @discardableResult
+    private func beginRequest() -> Int {
+        latestRequest += 1
+        return latestRequest
     }
 
     /// Starts a new intent that replaces what is on screen (retake, encode)
