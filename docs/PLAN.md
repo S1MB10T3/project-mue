@@ -37,6 +37,14 @@ This document is the working plan. It changes as we learn things; the
 - Work is tracked as GitHub issues, one per checklist item below, once
   phase 1 lands.
 
+## Design reference
+
+UI direction lives in Figma: [Project Mue](https://www.figma.com/design/GR3q87aN987svwoSg3ImBs/Project-Mue?node-id=1-2).
+The first layout ("Sample Test", 2026-09-21) is two elements on a plain
+background: a large rounded canvas for the picture with camera and
+photo-library buttons at its foot, and a pill-shaped player bar below it with
+a waveform and a play button. Settings and share have no home in it yet.
+
 ## Phases
 
 ### Phase 1 — Scaffolding and core ✅ (this branch)
