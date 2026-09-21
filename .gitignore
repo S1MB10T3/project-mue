@@ -25,3 +25,6 @@ Config/Local.xcconfig
 # Editors
 .vscode/
 .idea/
+
+# Local build output
+build/

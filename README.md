@@ -42,11 +42,28 @@ You can run MUE on your own iPhone without a paid developer account.
 Free-account limits: the app expires after 7 days (just run it again from
 Xcode), and there is no TestFlight.
 
-### Running the engine tests
+### Command-line workflow
+
+The `scripts/` folder wraps the whole loop so you (or Claude Code running
+locally) never need to click through Xcode:
 
 ```sh
-cd MueCore && swift test
+scripts/bootstrap.sh                 # XcodeGen, Local.xcconfig, generate project
+scripts/test.sh                      # MueCore unit tests
+scripts/build.sh                     # compile for the simulator, errors/warnings only
+scripts/sim-run.sh                   # build + install + launch in a simulator, console streaming
+scripts/sim-add-photo.sh photo.jpg   # give the simulator's photo library something to pick
+scripts/sim-screenshot.sh out.png    # capture the simulator screen
+scripts/device-run.sh                # build + install + launch on the plugged-in iPhone
 ```
+
+### Working with Claude Code
+
+Run Claude Code in this repository on your Mac. `CLAUDE.md` tells it how to
+build, test, run in the simulator, take screenshots and read the console,
+so it can see what it changed. Cloud sessions can still do engine work and
+docs (CI compiles for them), but anything that needs to be run belongs in a
+local session.
 
 ## Project layout
 

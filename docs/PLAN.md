@@ -34,6 +34,11 @@ This document is the working plan. It changes as we learn things; the
 - Device testing happens on the maintainer's iPhone 13 mini with a free
   Apple ID (sideload via Xcode; apps expire after 7 days and are reinstalled).
   There is no TestFlight until there is a paid developer account.
+- Two kinds of Claude Code session. **Local** (on the Mac, in this repo)
+  for anything that has to be run: UI, audio, debugging; it uses the
+  `scripts/` loop and can screenshot the simulator and read the console.
+  **Cloud** for engine work, docs and review, with CI as its compiler. Both
+  work on the same branch; pull before starting, push when done.
 - Work is tracked as GitHub issues, one per checklist item below, once
   phase 1 lands.
 
@@ -126,3 +131,4 @@ spectrogram *and* in a third-party spectrogram app on another device.
 | 2026-09-19 | No third-party dependencies. | Small surface, no supply-chain risk, easy for contributors. Accelerate/AVFoundation cover everything needed. |
 | 2026-09-19 | Additive synthesis (one sine per row) rather than inverse-FFT. | Exact spectrogram, no phase artefacts, already proven in the prototype. vDSP makes it fast enough later. |
 | 2026-09-19 | Name stays "MUE" for now. | Project codename; can change before release. |
+| 2026-09-21 | Local Claude Code sessions for run/debug work, cloud sessions for engine/docs. | The cloud container has no Xcode or simulator; the run loop must live on the Mac. `scripts/` + `CLAUDE.md` make that loop scriptable. |
