@@ -68,23 +68,22 @@ Done when: CI is green and the skeleton launches on the device.
 
 ### Phase 2 — The core loop, to the Figma layout
 
-Goal: pick or take a photo → hear it → watch it come back. Nail the feel
-before adding anything around it.
+Goal: pick or take a photo → hear it. Nail the feel before adding anything
+around it. (Watching it come back moved out of the canvas — see the decision
+log; phase 4 is where listening lives.)
 
 - [x] Pick an image from the photo library (PhotosPicker) or the camera.
 - [x] Downsample to columns × rows, encode, render audio off the main thread.
 - [x] Play through `AVAudioEngine` with `.playback` session category (plays
-      through the silent switch), playhead over the photo.
-- [x] Live spectrogram painted over the photo, left to right, with the same
-      geometry as the encoded matrix.
+      through the silent switch), progress shown by the player pill's bars.
 - [x] Player pill: real loudness envelope as bars, filling in as it plays.
 - [ ] Tune the feel on the device: default duration / band count / frequency
-      range, spectrogram dynamic range, how the canvas transitions.
+      range, how the canvas transitions.
 - [ ] Settings sheet (deferred until the core feels right).
 - [ ] Share as WAV via `ShareLink` (deferred).
 
-Done when: a photo played on the 13 mini is recognisable in the in-app
-spectrogram *and* in a third-party spectrogram app on another device.
+Done when: a photo played on the 13 mini is recognisable in a third-party
+spectrogram app on another device.
 
 ### Phase 3 — Native-only features
 
@@ -115,9 +114,10 @@ spectrogram *and* in a third-party spectrogram app on another device.
   Every developer sets their own in `Config/Local.xcconfig`.
 - **Spectrogram resolution vs. band count:** at low frequencies, adjacent
   bands can fall inside one FFT bin of the *display*. The audio is still
-  correct; the display FFT size is tuned in phase 2.
+  correct. No longer relevant to the app's own canvas (no live spectrogram
+  there), but it returns in phase 4's scrolling view.
 - **Swift 6 strict concurrency with AVAudioEngine:** audio taps run on a
-  realtime thread; frames are handed to the UI via an `AsyncStream`. Details
+  realtime thread; the playback tap now only reports a position. Details
   in [ARCHITECTURE.md](ARCHITECTURE.md). Note that `AVAudioNodeTapBlock` is
   not `Sendable` in the AVFoundation overlay, so a tap closure written inside
   a `@MainActor` type silently inherits that isolation and traps on the render
@@ -135,3 +135,6 @@ spectrogram *and* in a third-party spectrogram app on another device.
 | 2026-09-19 | Additive synthesis (one sine per row) rather than inverse-FFT. | Exact spectrogram, no phase artefacts, already proven in the prototype. vDSP makes it fast enough later. |
 | 2026-09-19 | Name stays "MUE" for now. | Project codename; can change before release. |
 | 2026-09-21 | Local Claude Code sessions for run/debug work, cloud sessions for engine/docs. | The cloud container has no Xcode or simulator; the run loop must live on the Mac. `scripts/` + `CLAUDE.md` make that loop scriptable. |
+| 2026-09-21 | The photo fills the canvas, cropped, instead of being letterboxed inside it. | Looks better; the canvas stops reading as a grey frame around a small picture. Trade-off: on a landscape photo only ~40% of the width is visible, so you see less of the picture than is in the sound. |
+| 2026-09-21 | Playback progress is shown by the player pill's bars, not a playhead over the photo. | It belongs with the transport controls, and a playhead tracks the *uncropped* picture, so after the fill change it spent most of playback off-canvas. |
+| 2026-09-21 | Removed the live spectrogram from the canvas; the photo stays untouched while it plays. | The bars carry progress, and after the fill change the paint front spent much of playback cropped off-canvas. Cost: the app no longer shows the picture coming back — that now has to be seen in a third-party spectrogram app, until phase 4 builds the real listening view. `SpectrogramAnalyzer` and `SpectrogramColumnMapper` stay in `MueCore`, tested, for that. |

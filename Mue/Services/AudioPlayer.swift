@@ -1,21 +1,13 @@
 import AVFoundation
 import MueCore
 
-/// One analysis result from the playback tap.
-struct AnalysisFrame: Sendable {
-    /// Playback position, 0…1.
-    let position: Double
-    /// dB per FFT bin.
-    let decibels: [Float]
-}
-
 enum AudioPlayerError: LocalizedError {
     case unsupportedFormat
     var errorDescription: String? { "Couldn't create an audio buffer for playback." }
 }
 
-/// Plays a `RenderedAudio` through `AVAudioEngine` and reports FFT frames
-/// from a tap on the player node while it plays.
+/// Plays a `RenderedAudio` through `AVAudioEngine` and reports how far through
+/// it is while it plays.
 @MainActor
 final class AudioPlayer {
     private let engine = AVAudioEngine()
@@ -27,13 +19,12 @@ final class AudioPlayer {
         engine.attach(player)
     }
 
-    /// Starts playback. `onFrame` is called on the audio thread; `onFinish`
-    /// on the main actor when the buffer has been played back (or the player
-    /// was stopped).
+    /// Starts playback. `onProgress` is called on the audio thread with the
+    /// position through the buffer, 0…1; `onFinish` on the main actor when the
+    /// buffer has been played back (or the player was stopped).
     func play(
         _ audio: RenderedAudio,
-        analyzer: SpectrogramAnalyzer,
-        onFrame: @escaping @Sendable (AnalysisFrame) -> Void,
+        onProgress: @escaping @Sendable (Double) -> Void,
         onFinish: @escaping @Sendable @MainActor () -> Void
     ) throws {
         stop()
@@ -54,17 +45,13 @@ final class AudioPlayer {
 
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        let state = TapState(fftSize: analyzer.fftSize)
+        let counter = FrameCounter()
         let total = Double(audio.samples.count)
         // `@Sendable` is load-bearing: `AVAudioNodeTapBlock` is not Sendable in
         // the AVFoundation overlay, so without it this closure inherits the
         // enclosing `@MainActor` isolation and traps on the render thread.
         player.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable pcm, _ in
-            guard let data = pcm.floatChannelData?[0] else { return }
-            state.push(data, count: Int(pcm.frameLength))
-            let position = min(1, Double(state.framesSeen) / total)
-            let dB = analyzer.decibels(state.window())
-            onFrame(AnalysisFrame(position: position, decibels: dB))
+            onProgress(counter.advance(by: Int(pcm.frameLength), of: total))
         }
         tapInstalled = true
 
@@ -88,36 +75,14 @@ final class AudioPlayer {
     }
 }
 
-/// Ring buffer of the most recent samples. Only ever touched from the audio
-/// tap thread, which is why it can be `@unchecked Sendable`.
-private final class TapState: @unchecked Sendable {
-    private var ring: [Float]
-    private var head = 0
-    private(set) var framesSeen = 0
+/// Running total of the frames the playback tap has seen. Only ever touched
+/// from the audio tap thread, which is why it can be `@unchecked Sendable`.
+private final class FrameCounter: @unchecked Sendable {
+    private var framesSeen = 0
 
-    init(fftSize: Int) {
-        ring = [Float](repeating: 0, count: fftSize)
-    }
-
-    func push(_ samples: UnsafePointer<Float>, count: Int) {
-        let n = ring.count
-        for i in 0..<count {
-            ring[head] = samples[i]
-            head += 1
-            if head == n { head = 0 }
-        }
+    /// Adds `count` frames and returns the position through `total`, 0…1.
+    func advance(by count: Int, of total: Double) -> Double {
         framesSeen += count
-    }
-
-    /// The last `fftSize` samples in chronological order.
-    func window() -> [Float] {
-        let n = ring.count
-        var out = [Float](repeating: 0, count: n)
-        for i in 0..<n {
-            var idx = head + i
-            if idx >= n { idx -= n }
-            out[i] = ring[idx]
-        }
-        return out
+        return Swift.min(1, Double(framesSeen) / total)
     }
 }

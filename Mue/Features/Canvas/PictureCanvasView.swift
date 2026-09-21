@@ -16,10 +16,12 @@ struct PictureCanvasView: View {
                 .fill(Color(uiColor: .systemGray5))
 
             if let photo = model.photo {
-                picture(photo)
-                    .padding(20)
-                    .padding(.bottom, 64)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // The picture is deliberately larger than the canvas (see
+                // `picture`), so it hangs off an overlay: an overlay can't
+                // grow its container the way a plain child would.
+                Color.clear
+                    .overlay { picture(photo) }
+                    .clipped()
             } else {
                 Text("Take or choose a photo")
                     .foregroundStyle(.secondary)
@@ -45,26 +47,12 @@ struct PictureCanvasView: View {
     }
 
     private func picture(_ photo: UIImage) -> some View {
-        ZStack {
-            Image(uiImage: photo)
-                .resizable()
-            if let spectrogram = model.spectrogramImage {
-                Image(decorative: spectrogram, scale: 1)
-                    .resizable()
-                    .interpolation(.none)
-            }
-            if model.isPlaying {
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(Color.accentColor)
-                        .frame(width: 2)
-                        .shadow(color: Color.accentColor.opacity(0.8), radius: 4)
-                        .offset(x: geo.size.width * model.progress)
-                }
-            }
-        }
-        .aspectRatio(model.photoAspect, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        Image(uiImage: photo)
+            .resizable()
+            // `.fill` so the picture covers the whole canvas; the overflow is
+            // cropped by the canvas's own rounded clip, so no inner corner
+            // radius here.
+            .aspectRatio(model.photoAspect, contentMode: .fill)
     }
 
     private var cameraButton: some View {
