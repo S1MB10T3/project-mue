@@ -72,7 +72,10 @@ Goal: pick or take a photo → hear it. Nail the feel before adding anything
 around it. (Watching it come back moved out of the canvas — see the decision
 log; phase 4 is where listening lives.)
 
-- [x] Pick an image from the photo library (PhotosPicker) or the camera.
+- [x] Pick an image from the photo library (PhotosPicker), or take one with
+      the canvas's own shutter.
+- [x] Live camera feed as the canvas's resting state, per the Figma
+      annotation on `15:21`; a captured shot or chosen photo replaces it.
 - [x] Downsample to columns × rows, encode, render audio off the main thread.
 - [x] Play through `AVAudioEngine` with `.playback` session category (plays
       through the silent switch), progress shown by the player pill's bars.
@@ -138,3 +141,6 @@ spectrogram app on another device.
 | 2026-09-21 | The photo fills the canvas, cropped, instead of being letterboxed inside it. | Looks better; the canvas stops reading as a grey frame around a small picture. Trade-off: on a landscape photo only ~40% of the width is visible, so you see less of the picture than is in the sound. |
 | 2026-09-21 | Playback progress is shown by the player pill's bars, not a playhead over the photo. | It belongs with the transport controls, and a playhead tracks the *uncropped* picture, so after the fill change it spent most of playback off-canvas. |
 | 2026-09-21 | Removed the live spectrogram from the canvas; the photo stays untouched while it plays. | The bars carry progress, and after the fill change the paint front spent much of playback cropped off-canvas. Cost: the app no longer shows the picture coming back — that now has to be seen in a third-party spectrogram app, until phase 4 builds the real listening view. `SpectrogramAnalyzer` and `SpectrogramColumnMapper` stay in `MueCore`, tested, for that. |
+| 2026-09-21 | The canvas shows a live camera feed; `AVCaptureSession` replaces the modal `UIImagePickerController`. | The Figma annotation on the canvas frame asks for it: "Live camera feed and once a shot as been captured or image has been uploaded it stays here." A modal picker cannot express that — the feed *is* the canvas's resting state. |
+| 2026-09-21 | Camera access is requested when the canvas appears, not behind a button. | Usually a bad idea, but here the live feed is the first thing the screen is supposed to show, so the request is in context at launch rather than cold. |
+| 2026-09-21 | The camera button is a shutter while the feed is up, and a "back to camera" control once a picture is showing. | The design has room for one camera button, and the annotation does not say how to get from a captured shot back to the feed. Revisit if a separate control earns its place. |

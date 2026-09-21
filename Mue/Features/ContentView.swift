@@ -4,12 +4,12 @@ import SwiftUI
 /// Main screen: the picture canvas and the player pill, per the Figma layout.
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pickerItem: PhotosPickerItem?
-    @State private var showCamera = false
 
     var body: some View {
         VStack(spacing: 24) {
-            PictureCanvasView(pickerItem: $pickerItem, showCamera: $showCamera)
+            PictureCanvasView(pickerItem: $pickerItem)
             PlayerPillView()
             if let message = model.errorMessage {
                 Text(message)
@@ -21,18 +21,21 @@ struct ContentView: View {
         .padding(.top, 16)
         .padding(.bottom, 24)
         .background(Color(uiColor: .systemBackground))
+        .task {
+            // The live feed is the canvas's resting state, so access is asked
+            // for as soon as the screen appears rather than behind a button.
+            await model.startCamera()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await model.startCamera() }
+            } else {
+                model.stopCamera()
+            }
+        }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task { await load(item) }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { image in
-                showCamera = false
-                if let image {
-                    Task { await model.setPhoto(image) }
-                }
-            }
-            .ignoresSafeArea()
         }
     }
 

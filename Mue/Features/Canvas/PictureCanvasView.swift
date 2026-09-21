@@ -1,12 +1,12 @@
 import PhotosUI
 import SwiftUI
 
-/// The big rounded canvas: the photo, the live spectrogram painting over it
-/// during playback, and the camera / library buttons at its foot.
+/// The big rounded canvas. Per the Figma annotation it shows the live camera
+/// feed, and once a shot is taken or a photo is chosen that picture stays
+/// here instead. Camera / library buttons sit at its foot.
 struct PictureCanvasView: View {
     @Environment(AppModel.self) private var model
     @Binding var pickerItem: PhotosPickerItem?
-    @Binding var showCamera: Bool
 
     private let corner: CGFloat = 40
 
@@ -22,9 +22,14 @@ struct PictureCanvasView: View {
                 Color.clear
                     .overlay { picture(photo) }
                     .clipped()
+            } else if model.isPreviewingCamera {
+                CameraPreviewView(session: model.cameraSession)
+                    .clipped()
             } else {
-                Text("Take or choose a photo")
+                Text(placeholder)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
@@ -46,6 +51,12 @@ struct PictureCanvasView: View {
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
     }
 
+    private var placeholder: String {
+        model.cameraAccess == .denied
+            ? "Camera access is off. Turn it on in Settings, or choose a photo."
+            : "Take or choose a photo"
+    }
+
     private func picture(_ photo: UIImage) -> some View {
         Image(uiImage: photo)
             .resizable()
@@ -55,14 +66,20 @@ struct PictureCanvasView: View {
             .aspectRatio(model.photoAspect, contentMode: .fill)
     }
 
+    /// Shutter while the live feed is up; back to the feed once a picture is
+    /// showing. One button, because the design only has room for one.
     private var cameraButton: some View {
         Button {
-            showCamera = true
+            if model.photo == nil {
+                Task { await model.capturePhoto() }
+            } else {
+                model.retake()
+            }
         } label: {
-            CircleIcon(systemName: "camera")
+            CircleIcon(systemName: model.photo == nil ? "camera" : "arrow.counterclockwise")
         }
-        .disabled(!CameraPicker.isAvailable)
-        .accessibilityLabel("Take a photo")
+        .disabled(model.cameraAccess != .authorized)
+        .accessibilityLabel(model.photo == nil ? "Take a photo" : "Back to the camera")
     }
 
     private var libraryButton: some View {

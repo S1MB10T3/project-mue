@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import MueCore
@@ -21,15 +22,53 @@ final class AppModel {
     /// Playback position, 0…1.
     private(set) var progress: Double = 0
     private(set) var errorMessage: String?
+    private(set) var cameraAccess = CameraSession.access
 
     var hasAudio: Bool { audio != nil }
+    /// The canvas shows the live feed whenever there is no picture to show.
+    var isPreviewingCamera: Bool { photo == nil && cameraAccess == .authorized }
+    var cameraSession: AVCaptureSession { camera.previewSession }
 
     private let player = AudioPlayer()
+    private let camera = CameraSession()
     private var generation = 0
+
+    /// Asks for camera access if it has not been asked for, and starts the
+    /// live feed. Called when the canvas appears, because the feed is the
+    /// canvas's resting state.
+    func startCamera() async {
+        cameraAccess = await CameraSession.requestAccess()
+        if cameraAccess == .authorized, photo == nil { camera.start() }
+    }
+
+    func stopCamera() {
+        camera.stop()
+    }
+
+    /// Takes a shot from the live feed and encodes it.
+    func capturePhoto() async {
+        guard let image = await camera.capturePhoto() else {
+            errorMessage = "Couldn't take that photo."
+            return
+        }
+        await setPhoto(image)
+    }
+
+    /// Discards the current picture and goes back to the live feed.
+    func retake() {
+        stop()
+        photo = nil
+        audio = nil
+        envelope = []
+        errorMessage = nil
+        generation += 1
+        if cameraAccess == .authorized { camera.start() }
+    }
 
     /// Encode a new photo and render its audio.
     func setPhoto(_ image: UIImage) async {
         stop()
+        camera.stop()
         photo = image
         photoAspect = image.size.height > 0 ? image.size.width / image.size.height : 1
         audio = nil
