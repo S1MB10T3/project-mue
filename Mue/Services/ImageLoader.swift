@@ -44,7 +44,16 @@ enum ImageLoader {
         }
         guard let ctx = draw(current, width: columns, height: rows), let data = ctx.data else { return nil }
         let count = columns * rows * 4
-        return Array(UnsafeBufferPointer(start: data.assumingMemoryBound(to: UInt8.self), count: count))
+        var bytes = Array(UnsafeBufferPointer(start: data.assumingMemoryBound(to: UInt8.self), count: count))
+        // The context is premultiplied, so transparency is already baked into
+        // RGB as darkness. Report every pixel as opaque so the caller's own
+        // alpha step (`AmplitudeMatrix.fromRGBA`) doesn't apply it twice.
+        var i = 3
+        while i < count {
+            bytes[i] = 255
+            i += 4
+        }
+        return bytes
     }
 
     private static func draw(_ image: CGImage, width: Int, height: Int) -> CGContext? {

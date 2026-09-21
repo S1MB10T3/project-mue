@@ -37,12 +37,15 @@ final class AppModel {
         errorMessage = nil
         generation += 1
         let gen = generation
+        // Owned by this call from here on: an older in-flight render that
+        // bails on the generation check must not touch it.
+        isPreparing = true
 
         guard let prepared = ImageLoader.prepare(image) else {
+            isPreparing = false
             errorMessage = "Couldn't read that image."
             return
         }
-        isPreparing = true
         let settings = self.settings.clamped()
         let result: RenderedAudio? = await Task.detached(priority: .userInitiated) {
             guard let rgba = ImageLoader.rgba(prepared, columns: settings.columns, rows: settings.bands) else { return nil }
