@@ -56,7 +56,10 @@ final class AudioPlayer {
 
         let state = TapState(fftSize: analyzer.fftSize)
         let total = Double(audio.samples.count)
-        player.installTap(onBus: 0, bufferSize: 1024, format: format) { pcm, _ in
+        // `@Sendable` is load-bearing: `AVAudioNodeTapBlock` is not Sendable in
+        // the AVFoundation overlay, so without it this closure inherits the
+        // enclosing `@MainActor` isolation and traps on the render thread.
+        player.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable pcm, _ in
             guard let data = pcm.floatChannelData?[0] else { return }
             state.push(data, count: Int(pcm.frameLength))
             let position = min(1, Double(state.framesSeen) / total)

@@ -118,7 +118,10 @@ spectrogram *and* in a third-party spectrogram app on another device.
   correct; the display FFT size is tuned in phase 2.
 - **Swift 6 strict concurrency with AVAudioEngine:** audio taps run on a
   realtime thread; frames are handed to the UI via an `AsyncStream`. Details
-  in [ARCHITECTURE.md](ARCHITECTURE.md).
+  in [ARCHITECTURE.md](ARCHITECTURE.md). Note that `AVAudioNodeTapBlock` is
+  not `Sendable` in the AVFoundation overlay, so a tap closure written inside
+  a `@MainActor` type silently inherits that isolation and traps on the render
+  thread; the closure must be marked `@Sendable` explicitly.
 
 ## Decision log
 
