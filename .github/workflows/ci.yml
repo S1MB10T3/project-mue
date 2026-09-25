@@ -1,8 +1,9 @@
 name: CI
 
+# `push` alone covers pull requests from branches in this repository; adding
+# `pull_request` too ran everything twice per commit.
 on:
   push:
-  pull_request:
 
 jobs:
   core:

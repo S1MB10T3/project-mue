@@ -29,6 +29,10 @@ public struct EncodingSettings: Codable, Equatable, Hashable, Sendable {
     public var floor: Double
     /// When true, dark pixels are loud (for black-on-white drawings).
     public var invert: Bool
+    /// Musical quantisation of row frequencies.
+    public var tuning: Tuning
+    /// Timbre of every row's oscillator.
+    public var waveform: Waveform
 
     public init(
         duration: Double = 6,
@@ -39,7 +43,9 @@ public struct EncodingSettings: Codable, Equatable, Hashable, Sendable {
         columnsPerSecond: Double = 40,
         gamma: Double = 1.6,
         floor: Double = 0.05,
-        invert: Bool = false
+        invert: Bool = false,
+        tuning: Tuning = .free,
+        waveform: Waveform = .sine
     ) {
         self.duration = duration
         self.bands = bands
@@ -50,6 +56,8 @@ public struct EncodingSettings: Codable, Equatable, Hashable, Sendable {
         self.gamma = gamma
         self.floor = floor
         self.invert = invert
+        self.tuning = tuning
+        self.waveform = waveform
     }
 
     /// Number of time columns the image is resampled to.

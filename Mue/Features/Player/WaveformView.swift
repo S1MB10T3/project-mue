@@ -1,32 +1,7 @@
 import SwiftUI
 
-/// The pill-shaped player: the sound's loudness envelope as bars, filling in
-/// as playback proceeds, and a play / stop button.
-struct PlayerPillView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        HStack(spacing: 20) {
-            WaveformView(envelope: model.envelope, progress: model.progress)
-                .frame(height: 60)
-            Button {
-                model.togglePlay()
-            } label: {
-                Image(systemName: model.isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 48, height: 48)
-                    .contentShape(Rectangle())
-            }
-            .disabled(!model.hasAudio)
-            .accessibilityLabel(model.isPlaying ? "Stop" : "Play")
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 17)
-        .background(Color(uiColor: .systemGray5), in: Capsule())
-    }
-}
-
+/// The sound's loudness envelope as bars, filling in with the accent colour
+/// as playback proceeds.
 struct WaveformView: View {
     let envelope: [Float]
     let progress: Double

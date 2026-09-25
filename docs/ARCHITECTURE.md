@@ -28,14 +28,21 @@ project-mue/
 │   ├── Sources/MueCore/
 │   │   ├── EncodingSettings.swift    user-facing parameters
 │   │   ├── FrequencyMapping.swift    row ↔ frequency (linear / log)
+│   │   ├── Tuning.swift              optional scale quantisation of rows
+│   │   ├── Waveform.swift            timbre as a few band-limited partials
 │   │   ├── AmplitudeMatrix.swift     rows × columns of loudness, from RGBA
-│   │   ├── AdditiveSynthesizer.swift matrix → samples
+│   │   ├── AdditiveSynthesizer.swift matrix → samples, or → per-band stems
+│   │   ├── RenderedAudio+Mix.swift   sum stems with gains; normalise together
+│   │   ├── RenderedAudio+Envelope.swift
+│   │   ├── SpectrogramAnalyzer.swift FFT (for the phase 4 listening view)
+│   │   ├── SpectrogramColumnMapper.swift
 │   │   └── WAVEncoder.swift          samples → .wav bytes
 │   └── Tests/MueCoreTests/
 ├── Mue/                     the iOS app (SwiftUI)
-│   ├── App/                 entry point, AppModel
-│   ├── Features/            one folder per screen / feature
-│   ├── Services/            wrappers around Apple frameworks
+│   ├── App/                 entry point, Sound, AppModel, SoundEditor
+│   ├── Features/            Capture/, Edit/, Player/
+│   ├── Services/            CameraSession, AudioPlayer, ImageLoader,
+│   │                        PhotoDescriber, WAVExport
 │   └── Resources/           asset catalog
 ├── docs/                    this file, PLAN.md
 └── .github/workflows/ci.yml
@@ -44,30 +51,34 @@ project-mue/
 ## Data flow
 
 ```
- PhotosPicker / Camera / PencilKit
-            │  UIImage
-            ▼
-   ImageLoader (Services)          CGContext draw → tightly packed RGBA,
-            │  [UInt8] RGBA           columns × rows, top row first
-            ▼
-   AmplitudeMatrix.fromRGBA        luminance · alpha → invert? → gamma → floor
-            │  rows × columns Float in 0…1
-            ▼
-   AdditiveSynthesizer.render      one sine per row, frequency from
-            │  RenderedAudio         FrequencyMapping, gain interpolated
-            │                        between columns, random start phase,
-            │                        10 ms master fade, peak-normalised
-            ├────────────────────► WAVEncoder → ShareLink (.wav)
-            ▼
-   AudioPlayer (Services)          AVAudioEngine: PlayerNode → MainMixer
-            │  tap on player node     AVAudioSession category .playback
-            ▼
-   SpectrogramAnalyzer (MueCore, phase 2)   FFT per tap buffer → dB per bin
-            │  AsyncStream<Frame>           → max over bins per image row
-            ▼
-   SpectrogramView (Features)      Canvas painting columns × rows, same
-                                   geometry as the preview
+ Capture screen                         Edit screen (one SoundEditor per Sound)
+ ──────────────                         ────────────────────────────────────────
+ CameraSession / PhotosPicker
+      │ UIImage
+      ▼
+ ImageLoader.prepare ──▶ Sound ──push──▶ ImageLoader.rgba      tightly packed RGBA,
+ (orientation, ≤1024px)                       │                columns × rows
+                                              ▼
+                                        AmplitudeMatrix.fromRGBA
+                                              │
+                                              ▼
+                                        AdditiveSynthesizer.renderStems   4 stems, one per
+                                              │  [RenderedAudio]          strip of rows; tuning
+                                              │                           + waveform applied;
+                                              │                           shared seed; normalised
+                                              │                           together
+                              ┌───────────────┼──────────────────┐
+                              ▼               ▼                  ▼
+                        RenderedAudio.mix   AudioPlayer       WAVExport (share sheet)
+                        (gains) → envelope  4 player nodes → submix → reverb → delay → out
+                                            volume = EQ gain     wet/dry = sliders
+
+ PhotoDescriber (Vision, on device) ──▶ description text, in parallel with the render
 ```
+
+Tuning and timbre change the oscillators, so they re-render (a few hundred
+milliseconds, off the main actor, generation-guarded). EQ gains and effect
+mixes are live properties on engine nodes and never re-render.
 
 ## MueCore
 
@@ -101,16 +112,31 @@ Rec. 709 luminance, alpha multiplied in (transparent = silent), then invert →
 gamma → floor. No image APIs: the app does the resampling with Core Graphics
 and hands over bytes, so the package stays platform-neutral and testable.
 
+### `Tuning` and `Waveform`
+
+`Tuning` snaps a row's frequency to the nearest note of a C-rooted scale in
+12-TET (`free` leaves it alone). `Waveform` is a short list of `Partial`s
+(harmonic number, relative amplitude): sine is one partial; saw, square and
+triangle use four to six band-limited partials, enough for the character
+without multiplying synthesis cost by the full series.
+
 ### `AdditiveSynthesizer`
 
-For each non-silent row: frequency from the mapping, a random start phase
-(seedable for tests), a phasor rotated once per sample (no `sin` in the inner
-loop), gain linearly interpolated between the row's column values across the
-duration. Rows accumulate into one buffer, a 10 ms fade in/out is applied, and
-the result is peak-normalised to 0.9.
+For each non-silent row: frequency from the mapping, then tuning; a start
+phase derived from the seed *and the row index*; for each partial a phasor
+rotated once per sample (no `sin` in the inner loop), gain linearly
+interpolated between the row's column values. Rows accumulate into one
+buffer, a 10 ms fade in/out is applied, and the result is peak-normalised
+to 0.9 unless `Options.normalize` is off.
 
-Cost is `rows × samples`; 128 bands × 6 s × 44.1 kHz ≈ 34 M iterations, well
-under 100 ms with optimisation. Phase 3 adds a vDSP path for 512+ bands.
+`Options.rows` restricts a render to a row range. `renderStems` uses it to
+render `n` contiguous bands with one shared seed and `normalizeTogether`,
+so the stems sum exactly to a full render: that is what makes the EQ a set
+of live gains rather than a re-render.
+
+Cost is `rows × partials × samples`; 128 sine bands × 6 s × 44.1 kHz ≈ 34 M
+iterations, well under 100 ms with optimisation; saw is 6× that. A vDSP path
+is on the plan for more bands or partials.
 
 Output is `RenderedAudio` (`sampleRate`, mono `[Float]`). The app converts it
 into an `AVAudioPCMBuffer` for playback; the core never imports AVFoundation.
@@ -130,31 +156,51 @@ peak normalisation, WAV header bytes.
 
 ### Model
 
-`AppModel` is a `@MainActor @Observable` class holding the chosen image, the
-current `EncodingSettings`, the encoded matrix, the rendered audio, and
-playback state. Views read it through the environment. Long work (resampling,
-rendering) runs in a detached `Task`; everything crossing the boundary is a
-`Sendable` value type from `MueCore`, which is what makes strict concurrency
-painless here.
+Two `@MainActor @Observable` classes, one per screen:
+
+- `AppModel` owns the capture screen: camera access, the live feed, and how
+  a picture gets chosen. Requests (capture, library pick) take a token so
+  the newest one wins whichever finishes first. A chosen picture becomes a
+  `Sound` (photo + prepared `CGImage`, identity by UUID) and setting
+  `AppModel.sound` pushes the edit screen; popping clears it.
+- `SoundEditor` owns one `Sound`'s edit state: the settings, the rendered
+  stems, EQ gains, effect mixes, envelope, description, playback state. It
+  is created by `EditView` and lives as long as the screen.
+
+Long work (resampling, rendering, Vision) runs off the main actor;
+everything crossing the boundary is a `Sendable` value type, which is what
+makes strict concurrency painless here. Re-renders are generation-guarded
+so a stale result never lands.
 
 ### Services
 
 - `ImageLoader` — `PhotosPickerItem`/`UIImage` → RGBA bytes at a given size.
   Downscales in halving steps (large photos alias badly in one step).
-- `AudioPlayer` — owns the `AVAudioEngine`, configures `AVAudioSession`
-  (`.playback` so the silent switch does not mute), plays a
-  `RenderedAudio`, exposes the playhead and a tap that yields analysis frames
-  through an `AsyncStream`. Tap callbacks run on a realtime thread: do the FFT
-  there, publish a small `Sendable` frame, never touch UI state.
-- `Exporter` — writes WAV to a temporary URL for `ShareLink`.
+- `CameraSession` — `AVCaptureSession` on its own serial queue; stills via
+  per-capture delegates that always resume their caller, even if the session
+  is stopped mid-capture. Stills are pinned to portrait.
+- `AudioPlayer` — owns the `AVAudioEngine` graph: one `AVAudioPlayerNode`
+  per stem → submix → `AVAudioUnitReverb` → `AVAudioUnitDelay` → main mixer.
+  Configures `AVAudioSession` (`.playback` so the silent switch does not
+  mute). Stems start on one shared host time so they stay sample-aligned.
+  A tap on the first stem counts frames for the playhead and does nothing
+  else on the realtime thread; it is explicitly `@Sendable` so it does not
+  inherit main-actor isolation.
+- `PhotoDescriber` — `VNClassifyImageRequest` on a background queue; a few
+  confident labels become the description text.
+- `WAVExport` — a `Transferable` that encodes the EQ'd mix when the share
+  sheet asks for it. Effects are not baked in yet (see the plan).
 
-### Features (phase 2 onward)
+### Features
 
-- `Encode` — picker, encoded preview with playhead, transport buttons.
-- `Spectrogram` — live view painted into a `CGImage` the size of the matrix
-  and drawn with `Canvas`; nearest-neighbour scaling keeps pixels crisp.
-- `Settings` — form bound to `EncodingSettings`, persisted via `@AppStorage`
-  as JSON.
+- `Capture/` — `CaptureView` (the canvas with the live feed, shutter and
+  library buttons) and `CameraPreviewView` (an `AVCaptureVideoPreviewLayer`
+  host).
+- `Edit/` — `EditView` composes `DescriptionView`, the waveform, `EQView`
+  (four `VerticalSlider`s, low frequencies on the left) and
+  `SynthControlsView` (tuning menu, waveform segments, reverb and delay
+  sliders), with play and `ShareLink` in a bottom bar.
+- `Player/` — `WaveformView`, the envelope bars with progress fill.
 - `Listen` (phase 4) — microphone → scrolling spectrogram → save as image.
 
 ### Build configuration

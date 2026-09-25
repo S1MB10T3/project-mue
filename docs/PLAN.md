@@ -45,10 +45,15 @@ This document is the working plan. It changes as we learn things; the
 ## Design reference
 
 UI direction lives in Figma: [Project Mue](https://www.figma.com/design/GR3q87aN987svwoSg3ImBs/Project-Mue?node-id=1-2).
-The first layout ("Sample Test", 2026-09-21) is two elements on a plain
-background: a large rounded canvas for the picture with camera and
-photo-library buttons at its foot, and a pill-shaped player bar below it with
-a waveform and a play button. Settings and share have no home in it yet.
+The first layout ("Sample Test", 2026-09-21) is a large rounded canvas for
+the picture with camera and photo-library buttons at its foot, and a
+pill-shaped player bar below it.
+
+The 2026-09-25 paper sketch splits that into two screens: **Capture** (the
+canvas and its two buttons, full height) and **Edit** (description block
+with thumbnail and text, the sound's waveform, four vertical EQ sliders,
+and play / save at the bottom). Synth controls (tuning, timbre, effects)
+sit with the EQ. The app follows the sketch; the Figma file will catch up.
 
 ## Phases
 
@@ -66,33 +71,43 @@ Goal: the repository builds, tests pass, and the architecture exists in code.
 
 Done when: CI is green and the skeleton launches on the device.
 
-### Phase 2 — The core loop, to the Figma layout
+### Phase 2 — The core loop ✅
 
-Goal: pick or take a photo → hear it. Nail the feel before adding anything
-around it. (Watching it come back moved out of the canvas — see the decision
-log; phase 4 is where listening lives.)
+Goal: pick or take a photo → hear it.
 
-- [x] Pick an image from the photo library (PhotosPicker), or take one with
-      the canvas's own shutter.
-- [x] Live camera feed as the canvas's resting state, per the Figma
-      annotation on `15:21`; a captured shot or chosen photo replaces it.
+- [x] Live camera feed on the canvas; shutter and library buttons.
 - [x] Downsample to columns × rows, encode, render audio off the main thread.
 - [x] Play through `AVAudioEngine` with `.playback` session category (plays
-      through the silent switch), progress shown by the player pill's bars.
+      through the silent switch), progress shown by the waveform bars.
 - [x] Player pill: real loudness envelope as bars, filling in as it plays.
-- [ ] Tune the feel on the device: default duration / band count / frequency
-      range, how the canvas transitions.
-- [ ] Settings sheet (deferred until the core feels right).
-- [ ] Share as WAV via `ShareLink` (deferred).
 
-Done when: a photo played on the 13 mini is recognisable in a third-party
-spectrogram app on another device.
+### Phase 3 — Capture → Edit
 
-### Phase 3 — Native-only features
+Goal: the two-screen flow from the 2026-09-25 sketch. Capture is one
+screen; everything you do to the sound is a second screen you push to.
 
-- [ ] Draw directly on the canvas (PencilKit) and hear it.
+- [x] Two screens: `CaptureView` → `EditView`. Model split into `AppModel`
+      (capture) and `SoundEditor` (one sound's edit state and audio).
+- [x] Description block: thumbnail plus on-device Vision labels of the photo.
+- [x] Waveform: the EQ'd mix's envelope, filling in during playback.
+- [x] EQ: four vertical sliders, one per horizontal strip of the picture.
+      The sound is rendered as four stems and each slider is a live gain,
+      so moving one is instant. Cut-only (0…1) for now.
+- [x] Synth — tuning: quantise rows to chromatic / major / minor /
+      pentatonic (C-rooted, A4 = 440). Re-renders.
+- [x] Synth — timbre: sine / triangle / square / saw from a few band-limited
+      partials. Re-renders.
+- [x] Synth — effects: reverb and delay wet/dry, live, in the engine graph.
+- [x] Save: share the EQ'd mix as a WAV via the share sheet.
+- [ ] Try it on the 13 mini and tune the feel: default duration, band
+      count, frequency range, whether cut-only EQ is enough, whether the
+      partial counts sound right, what the effects defaults should be.
+- [ ] Bake reverb and delay into the saved WAV (offline render through the
+      same engine graph) so what you save is what you heard.
+- [ ] Boost as well as cut on the EQ (gains above 1 with headroom).
+- [ ] Draw / paint directly on the canvas (PencilKit) and hear it.
 - [ ] "Fit duration to image" so the picture isn't stretched.
-- [ ] Accelerate (vDSP) synthesis path for 512+ bands.
+- [ ] Accelerate (vDSP) synthesis path for 512+ bands / more partials.
 - [ ] Haptic tick on playback start/stop; Dynamic Type; VoiceOver labels.
 - [ ] Optional stereo: colour channels → left/right.
 
@@ -141,6 +156,11 @@ spectrogram app on another device.
 | 2026-09-21 | The photo fills the canvas, cropped, instead of being letterboxed inside it. | Looks better; the canvas stops reading as a grey frame around a small picture. Trade-off: on a landscape photo only ~40% of the width is visible, so you see less of the picture than is in the sound. |
 | 2026-09-21 | Playback progress is shown by the player pill's bars, not a playhead over the photo. | It belongs with the transport controls, and a playhead tracks the *uncropped* picture, so after the fill change it spent most of playback off-canvas. |
 | 2026-09-21 | Removed the live spectrogram from the canvas; the photo stays untouched while it plays. | The bars carry progress, and after the fill change the paint front spent much of playback cropped off-canvas. Cost: the app no longer shows the picture coming back — that now has to be seen in a third-party spectrogram app, until phase 4 builds the real listening view. `SpectrogramAnalyzer` and `SpectrogramColumnMapper` stay in `MueCore`, tested, for that. |
+| 2026-09-25 | Two screens: Capture → Edit, per the paper sketch. | Capture stays a viewfinder; everything that changes the sound gets room of its own. Model split accordingly (`AppModel` / `SoundEditor`). |
+| 2026-09-25 | EQ bands are horizontal strips of the picture, implemented as pre-rendered stems with live per-node gains. | In MUE a frequency band *is* a strip of rows, so the EQ visibly carves the image. Stems make slider moves instant instead of a re-render. Stems share one seed so they sum exactly to the full render. |
+| 2026-09-25 | Synth = tuning (scale quantisation) + timbre (band-limited partials) + effects (reverb, delay). | Tuning and timbre live in `MueCore` and re-render; effects live in the `AVAudioEngine` graph and are live. A playable keyboard is deferred. |
+| 2026-09-25 | Description = on-device Vision classification labels. | Zero network, zero dependencies, and it fits the sketch's two lines. Can become editable text later. |
+| 2026-09-25 | Save = WAV via the share sheet; effects not yet baked in. | Baking effects needs an offline render through the engine graph; queued as the next task so the first version ships simply. |
 | 2026-09-21 | The canvas shows a live camera feed; `AVCaptureSession` replaces the modal `UIImagePickerController`. | The Figma annotation on the canvas frame asks for it: "Live camera feed and once a shot as been captured or image has been uploaded it stays here." A modal picker cannot express that — the feed *is* the canvas's resting state. |
 | 2026-09-21 | Camera access is requested when the canvas appears, not behind a button. | Usually a bad idea, but here the live feed is the first thing the screen is supposed to show, so the request is in context at launch rather than cold. |
 | 2026-09-21 | The camera button is a shutter while the feed is up, and a "back to camera" control once a picture is showing. | The design has room for one camera button, and the annotation does not say how to get from a captured shot back to the feed. Revisit if a separate control earns its place. |
