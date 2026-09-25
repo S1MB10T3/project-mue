@@ -22,6 +22,11 @@ xcodegen generate
 open Mue.xcodeproj
 ```
 
+`Mue.xcodeproj` is generated and not committed, so **after every `git pull`
+that adds, removes or moves files, run `xcodegen generate` again** before
+building in Xcode. (The `scripts/` wrappers do this for you.) The symptom of
+forgetting is "Build input files cannot be found".
+
 ### Signing with a free Apple ID
 
 You can run MUE on your own iPhone without a paid developer account.

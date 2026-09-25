@@ -12,7 +12,9 @@ is being worked on and why.
 - `Mue/` — the SwiftUI app. `App/` (entry, `AppModel`), `Features/` (views),
   `Services/` (wrappers around Apple frameworks), `Resources/`.
 - `project.yml` — XcodeGen spec. **Never edit `Mue.xcodeproj`**; it is
-  generated and gitignored. Change `project.yml` and regenerate.
+  generated and gitignored. Change `project.yml` and regenerate. After a
+  pull that adds, removes or moves files, run `xcodegen generate` before
+  building in Xcode, or the build fails with "input files cannot be found".
 - `Config/` — xcconfig. `Local.xcconfig` holds the developer's bundle id
   and team id and is gitignored; never commit it or its values.
 
