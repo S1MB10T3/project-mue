@@ -12,9 +12,13 @@ final class TuningTests: XCTestCase {
         XCTAssertEqual(Tuning.chromatic.quantize(460), 466.1638, accuracy: 1e-3) // A#4
     }
 
+    /// Exact 12-TET frequency `semitones` above A4. Rounded literals sit a
+    /// few millionths of a semitone off the true midpoint, which decides ties.
+    private func note(_ semitones: Double) -> Double { 440 * pow(2.0, semitones / 12) }
+
     func testMajorSkipsAccidentals() {
         // A#4 is not in C major; the nearest scale notes are A4 and B4, tie → lower.
-        XCTAssertEqual(Tuning.major.quantize(466.1638), 440, accuracy: 1e-3)
+        XCTAssertEqual(Tuning.major.quantize(note(1)), 440, accuracy: 1e-6)
         // 470 Hz is nearer B4 than A4.
         XCTAssertEqual(Tuning.major.quantize(470), 493.8833, accuracy: 1e-3)
     }
@@ -27,8 +31,8 @@ final class TuningTests: XCTestCase {
     }
 
     func testMinorHasFlatThird() {
-        // E4 (329.63) is not in C minor; D#4 (311.13) is one semitone down, F4 one up → tie → lower.
-        XCTAssertEqual(Tuning.minor.quantize(329.6276), 311.1270, accuracy: 1e-3)
+        // E4 is not in C minor; D#4 is one semitone down, F4 one up → tie → lower.
+        XCTAssertEqual(Tuning.minor.quantize(note(-5)), note(-6), accuracy: 1e-6)
     }
 
     func testQuantizedFrequenciesAreScaleNotes() {
