@@ -36,7 +36,9 @@ public enum Tuning: String, Codable, CaseIterable, Sendable {
             let pitchClass = ((candidate % 12) + 12) % 12
             guard classes.contains(pitchClass) else { continue }
             let distance = abs(Double(candidate) - semitones)
-            if distance < bestDistance {
+            // Candidates ascend, so keeping the first of an (epsilon) tie
+            // makes the lower note win, regardless of floating-point noise.
+            if distance < bestDistance - 1e-9 {
                 bestDistance = distance
                 best = candidate
             }
